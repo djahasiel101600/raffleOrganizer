@@ -1,0 +1,12 @@
+# Keep host artefacts out of the build context / image.
+db.sqlite3
+*.sqlite3
+media/
+staticfiles/
+__pycache__/
+*.py[cod]
+.venv/
+.env
+Dockerfile
+.dockerignore
+docker-entrypoint.sh.bak

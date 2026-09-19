@@ -1,0 +1,79 @@
+name: raffle-ticket-reservation
+
+# Raffle Ticket Reservation — production deployment.
+#
+#   raffle-ticket-api  → Django 5 + daphne (REST API under /api/ and the
+#                        /ws/reservations/ WebSocket endpoint)
+#   raffle-ticket-web  → nginx (built React SPA; reverse-proxies /api/ and
+#                        /ws/, serves /media/ and /static/ from shared volumes)
+#
+# Both services join the pre-existing external "jdp-network".  Create it once
+# if it does not exist yet:
+#
+#     docker network create jdp-network
+#
+# Configuration comes from the root .env file (see .env.example).
+
+services:
+  raffle-ticket-api:
+    build:
+      context: ./backend
+    image: raffle-ticket-api:1.0.0
+    container_name: raffle-ticket-api
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-Asia/Manila}
+      DJANGO_PUBLIC_MONITOR: ${DJANGO_PUBLIC_MONITOR:-1}
+      # The web proxy serves the app and API on one origin, so CORS is only
+      # needed for out-of-browser clients / the Vite dev server.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # SQLite lives on a named volume so reservations survive rebuilds.
+      DB_NAME: /data/raffle.sqlite3
+      DJANGO_MEDIA_ROOT: /app/media
+      DJANGO_STATIC_ROOT: /app/staticfiles
+      RAFFLE_ADMIN_USERNAME: ${RAFFLE_ADMIN_USERNAME:-admin}
+      RAFFLE_ADMIN_PASSWORD: ${RAFFLE_ADMIN_PASSWORD:-admin123}
+      RAFFLE_ADMIN_EMAIL: ${RAFFLE_ADMIN_EMAIL:-admin@example.com}
+      RAFFLE_BOOTSTRAP_ADMIN: ${RAFFLE_BOOTSTRAP_ADMIN:-1}
+    volumes:
+      - raffle-sqlite-data:/data
+      - raffle-media:/app/media
+      - raffle-static:/app/staticfiles
+    networks:
+      - jdp-network
+    expose:
+      - "8000"
+    # Reach the API directly (skipping the web proxy) if ever needed:
+    # ports:
+    #   - "${RAFFLE_API_PORT:-8000}:8000"
+
+  raffle-ticket-web:
+    build:
+      context: ./frontend
+    image: raffle-ticket-web:1.0.0
+    container_name: raffle-ticket-web
+    restart: unless-stopped
+    depends_on:
+      raffle-ticket-api:
+        condition: service_healthy
+    ports:
+      - "${RAFFLE_WEB_PORT:-8080}:80"
+    volumes:
+      # Read-only views of the API's media uploads and collected static files.
+      - raffle-media:/media:ro
+      - raffle-static:/staticfiles:ro
+    networks:
+      - jdp-network
+
+networks:
+  jdp-network:
+    external: true
+
+volumes:
+  raffle-sqlite-data:
+  raffle-media:
+  raffle-static:
