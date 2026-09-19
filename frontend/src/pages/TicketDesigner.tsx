@@ -26,6 +26,8 @@ import {
   Bold,
   Circle,
   Copy,
+  FileDown,
+  FileUp,
   Image as ImageIcon,
   Italic,
   Loader2,
@@ -89,6 +91,16 @@ import {
   resolveTokens,
 } from "@/lib/ticketDesign";
 import type { AlignMode, DesignElement, ShapeKind } from "@/lib/ticketDesign";
+import {
+  TemplateError,
+  backgroundPayloadFromFile,
+  backgroundPayloadFromUrl,
+  buildTemplateJson,
+  downloadTextFile,
+  parseTemplateJson,
+  templateFileName,
+} from "@/lib/designTemplate";
+import type { TemplateBackgroundPayload } from "@/lib/designTemplate";
 import { cn } from "@/lib/utils";
 import { SizeGuide } from "@/components/print/SizeGuide";
 
@@ -109,6 +121,7 @@ interface DragState {
 }
 
 const BACKGROUND_INPUT_ID = "ticket-background-input";
+const TEMPLATE_INPUT_ID = "ticket-template-input";
 
 /** Quick fill/border presets for new shapes. */
 const SHAPE_PRESETS = [
@@ -319,6 +332,10 @@ export default function TicketDesigner() {
   const [dirty, setDirty] = useState(false);
   /** In-progress colour value from the pickers, committed on blur. */
   const [colorDraft, setColorDraft] = useState<string | null>(null);
+  /** Name embedded in exported template files. */
+  const [templateName, setTemplateName] = useState("Ticket design");
+  const [exportingTemplate, setExportingTemplate] = useState(false);
+  const [importingTemplate, setImportingTemplate] = useState(false);
 
   // Local preview of a freshly picked background file so the canvas shows it
   // immediately — before anything is saved to the server.  The object URL is
@@ -336,8 +353,10 @@ export default function TicketDesigner() {
     return () => URL.revokeObjectURL(pendingBackgroundPreview.url);
   }, [pendingBackgroundPreview]);
 
-  /** What the canvas renders right now: the pending file wins over the saved one. */
-  const canvasBackgroundUrl = pendingBackgroundPreview?.url ?? backgroundUrl;
+  /** What the canvas renders right now: the pending file wins over the saved
+   *  one, and a pending removal hides the saved background immediately. */
+  const canvasBackgroundUrl =
+    pendingBackgroundPreview?.url ?? (clearBackground ? null : backgroundUrl);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -824,6 +843,80 @@ export default function TicketDesigner() {
     setDirty(true);
   };
 
+  // ---- template import / export ---------------------------------------------
+  /**
+   * Download the current design as a self-contained template file: layout,
+   * sheet setup and the effective background (pending upload wins, a pending
+   * removal means no background, otherwise the saved image is fetched and
+   * embedded).  Everything currently on the canvas is what gets exported.
+   */
+  const handleExportTemplate = async () => {
+    setExportingTemplate(true);
+    try {
+      let background: TemplateBackgroundPayload | null = null;
+      if (pendingBackground) {
+        background = await backgroundPayloadFromFile(pendingBackground);
+      } else if (!clearBackground && backgroundUrl) {
+        try {
+          background = await backgroundPayloadFromUrl(backgroundUrl);
+        } catch {
+          toast.info(
+            "The background image could not be read — exporting the design without it."
+          );
+        }
+      }
+      const json = buildTemplateJson({ name: templateName, layout, geometry, background });
+      downloadTextFile(templateFileName(templateName), json);
+      toast.success("Template exported — share the downloaded file.");
+    } catch {
+      toast.error("Unable to export the template.");
+    } finally {
+      setExportingTemplate(false);
+    }
+  };
+
+  /**
+   * Load a shared template file into the designer as pending changes: the
+   * layout and (validated) sheet setup are applied at once, the embedded
+   * background — if any — flows through the normal save pipeline.  Nothing is
+   * persisted until the user presses "Save design".
+   */
+  const handleImportTemplate = async (file: File | null) => {
+    if (!file) return;
+    setImportingTemplate(true);
+    try {
+      const parsed = parseTemplateJson(await file.text());
+      setLayout(parsed.layout);
+      if (parsed.geometry) {
+        setGeometry(parsed.geometry);
+      } else {
+        toast.info(
+          "The template's sheet setup does not fit its paper — your current one was kept."
+        );
+      }
+      if (parsed.background) {
+        setPendingBackground(parsed.background);
+        setClearBackground(false);
+      } else {
+        setPendingBackground(null);
+        setClearBackground(true);
+      }
+      selectOne(null);
+      setDirty(true);
+      toast.success(
+        `Template “${parsed.name}” loaded — review it and press “Save design”.`
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof TemplateError
+          ? err.message
+          : "Unable to read the template file."
+      );
+    } finally {
+      setImportingTemplate(false);
+    }
+  };
+
   // ---- save -------------------------------------------------------------------
   const handleSave = async () => {
     const geometryError = validateGeometry(geometry);
@@ -1271,6 +1364,74 @@ export default function TicketDesigner() {
                 </div>
               </div>
               <SizeGuide geometry={geometry} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Share as template</CardTitle>
+              <CardDescription>
+                Export this design (layout, sheet setup and background) to a
+                file anyone can import into their Ticket Designer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="d-template-name" className="text-xs">
+                  Template name
+                </Label>
+                <Input
+                  id="d-template-name"
+                  className="h-8 text-xs"
+                  maxLength={80}
+                  value={templateName}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={exportingTemplate}
+                  onClick={() => void handleExportTemplate()}
+                >
+                  {exportingTemplate ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4" />
+                  )}
+                  Export
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={importingTemplate}
+                  onClick={() => document.getElementById(TEMPLATE_INPUT_ID)?.click()}
+                >
+                  {importingTemplate ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="h-4 w-4" />
+                  )}
+                  Import
+                </Button>
+              </div>
+              <input
+                id={TEMPLATE_INPUT_ID}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(event) => {
+                  void handleImportTemplate(event.target.files?.[0] ?? null);
+                  event.target.value = "";
+                }}
+              />
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Importing replaces the designer contents; nothing is saved until
+                you press “Save design”.
+              </p>
             </CardContent>
           </Card>
         </div>
