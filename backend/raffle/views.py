@@ -119,6 +119,15 @@ class DashboardView(APIView):
 # Tickets
 # ---------------------------------------------------------------------------
 
+def _parse_number_list(raw: str, limit: int = 500) -> list[int]:
+    numbers: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit() and len(part) <= 9:
+            numbers.append(int(part))
+        if len(numbers) >= limit:
+            break
+    return numbers
 
 class TicketListView(generics.ListAPIView):
     serializer_class = TicketSerializer
@@ -130,6 +139,11 @@ class TicketListView(generics.ListAPIView):
         if status_filter in (TicketStatus.AVAILABLE, TicketStatus.RESERVED):
             queryset = queryset.filter(status=status_filter)
 
+        # Bulk lookup: /api/tickets/?numbers=7,12,15
+        if "numbers" in self.request.query_params:
+            numbers = _parse_number_list(self.request.query_params["numbers"])
+            queryset = queryset.filter(number__in=numbers)
+
         search = self.request.query_params.get("search", "").strip()
         if search and search.isdigit():
             queryset = queryset.filter(number__contains=int(search))
@@ -140,7 +154,7 @@ class TicketListView(generics.ListAPIView):
         except ValueError:
             page_size = 100
         self.paginator.page_size = page_size
-        return queryset
+        return queryset.order_by("number")
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -249,10 +263,21 @@ class ReservationListCreateView(generics.ListCreateAPIView):
                 price_per_ticket=price_per_ticket,
             )
         except ReservationError as exc:
-            return Response(
-                {"detail": exc.message, "code": exc.code},
-                status=status.HTTP_400_BAD_REQUEST,
+            body = {"detail": exc.message, "code": exc.code}
+            http_status = status.HTTP_400_BAD_REQUEST
+
+            requested = set(validated["ticket_numbers"])
+            existing = dict(
+                Ticket.objects.filter(number__in=requested).values_list("number", "status")
             )
+            conflicts = sorted(n for n, s in existing.items() if s == TicketStatus.RESERVED)
+            missing = sorted(requested - set(existing))
+            if conflicts:
+                body["conflicts"] = conflicts
+                http_status = status.HTTP_409_CONFLICT
+            if missing:
+                body["missing"] = missing
+            return Response(body, status=http_status)
 
         _hydrate_numbers([reservation])
         return Response(

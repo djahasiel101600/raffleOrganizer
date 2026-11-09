@@ -120,80 +120,88 @@ interface TicketsResponse {
   ticket_price?: number | string | null;
 }
 
+// ############### DELETE THIS PART #############################
 // Public API helpers - anonymous endpoints that skip JWT token attachment
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+// const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
-class ApiClientError extends Error {
-  status: number;
-  detail: string;
-  code?: string;
-  response?: Response;
+// class ApiClientError extends Error {
+//   status: number;
+//   detail: string;
+//   code?: string;
+//   response?: Response;
 
-  constructor(
-    status: number,
-    detail: string,
-    code?: string,
-    response?: Response,
-  ) {
-    super(detail);
-    this.name = "ApiClientError";
-    this.status = status;
-    this.detail = detail;
-    this.code = code;
-    this.response = response;
-  }
-}
+//   constructor(
+//     status: number,
+//     detail: string,
+//     code?: string,
+//     response?: Response,
+//   ) {
+//     super(detail);
+//     this.name = "ApiClientError";
+//     this.status = status;
+//     this.detail = detail;
+//     this.code = code;
+//     this.response = response;
+//   }
+// }
+
+// function isApiClientError(error: unknown): error is ApiClientError {
+//   return error instanceof ApiClientError;
+// }
+
+// interface PublicApiFetchOptions {
+//   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+//   body?: unknown;
+//   signal?: AbortSignal;
+// }
+
+// async function apiFetchPublic<T>(
+//   path: string,
+//   options: PublicApiFetchOptions = {},
+// ): Promise<T> {
+//   const headers: Record<string, string> = { Accept: "application/json" };
+//   if (options.body instanceof FormData) {
+//     // Let the browser set the multipart boundary header
+//   } else if (options.body !== undefined) {
+//     headers["Content-Type"] = "application/json";
+//   }
+
+//   const response = await fetch(API_BASE + path, {
+//     method: options.method ?? "GET",
+//     headers,
+//     signal: options.signal,
+//     body:
+//       options.body instanceof FormData
+//         ? options.body
+//         : options.body !== undefined
+//           ? JSON.stringify(options.body)
+//           : undefined,
+//   });
+
+//   if (!response.ok) {
+//     let payload: Record<string, unknown> = {};
+//     try {
+//       payload = await response.json();
+//     } catch {
+//       // Response had no JSON body; fall back to the generic message below.
+//     }
+//     const detail =
+//       typeof payload.detail === "string"
+//         ? payload.detail
+//         : "Request failed (" + response.status + ").";
+//     const code = typeof payload.code === "string" ? payload.code : undefined;
+//     throw new ApiClientError(response.status, detail, code, response);
+//   }
+
+//   if (response.status === 204) return undefined as T;
+//   return (await response.json()) as T;
+// }
+// ############### DELETE THIS PART #############################
+
+import { apiFetch, ApiClientError } from "@/services/api";
 
 function isApiClientError(error: unknown): error is ApiClientError {
   return error instanceof ApiClientError;
-}
-
-interface PublicApiFetchOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  body?: unknown;
-  signal?: AbortSignal;
-}
-
-async function apiFetchPublic<T>(
-  path: string,
-  options: PublicApiFetchOptions = {},
-): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (options.body instanceof FormData) {
-    // Let the browser set the multipart boundary header
-  } else if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const response = await fetch(API_BASE + path, {
-    method: options.method ?? "GET",
-    headers,
-    signal: options.signal,
-    body:
-      options.body instanceof FormData
-        ? options.body
-        : options.body !== undefined
-          ? JSON.stringify(options.body)
-          : undefined,
-  });
-
-  if (!response.ok) {
-    let payload: Record<string, unknown> = {};
-    try {
-      payload = await response.json();
-    } catch {
-      // Response had no JSON body; fall back to the generic message below.
-    }
-    const detail =
-      typeof payload.detail === "string"
-        ? payload.detail
-        : "Request failed (" + response.status + ").";
-    const code = typeof payload.code === "string" ? payload.code : undefined;
-    throw new ApiClientError(response.status, detail, code, response);
-  }
-
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
 }
 
 // Lazy import to avoid circular dependency
@@ -440,11 +448,9 @@ export default function PublicReservation() {
         page: String(pageNum),
         page_size: String(PAGE_SIZE),
       });
-      const data = await apiFetchPublic<TicketsResponse>(
+      const data = await apiFetch<TicketsResponse>(
         "/api/tickets/?" + params.toString(),
-        {
-          method: "GET",
-        },
+        { auth: false },
       );
       if (id !== requestId.current) return;
 

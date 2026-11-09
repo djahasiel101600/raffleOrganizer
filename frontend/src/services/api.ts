@@ -36,13 +36,20 @@ export class ApiClientError extends Error {
   status: number;
   code?: string;
   detail?: string;
+  payload: Record<string, unknown>;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    payload: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
     this.code = code;
     this.detail = message;
+    this.payload = payload;
   }
 }
 
@@ -67,7 +74,8 @@ async function parseErrorResponse(response: Response): Promise<ApiClientError> {
   return new ApiClientError(
     response.status,
     detail,
-    typeof payload.code === "string" ? payload.code : undefined
+    typeof payload.code === "string" ? payload.code : undefined,
+    payload,
   );
 }
 
