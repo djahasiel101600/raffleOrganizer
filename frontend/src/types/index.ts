@@ -1,5 +1,7 @@
 export type TicketStatus = "available" | "reserved";
 export type ReservationStatus = "active" | "cancelled";
+export type PaymentStatus = "unpaid" | "partially_paid" | "paid" | "cancelled";
+export type ReservationSource = "public" | "authenticated";
 
 export interface Ticket {
   id: number;
@@ -14,7 +16,17 @@ export interface ReservationSummary {
   display_id: string;
   customer_name: string;
   contact_number: string;
+  notes?: string;
   status: ReservationStatus;
+  source: ReservationSource;
+  price_per_ticket: string;
+  total_amount: string;
+  amount_paid: string;
+  balance_due: string;
+  payment_status: PaymentStatus;
+  payment_date: string | null;
+  payment_notes: string;
+  processed_by: string | null;
   ticket_numbers: string[];
   /** Subset of `ticket_numbers` that is still active and therefore printable. */
   printable_ticket_numbers: string[];
@@ -23,7 +35,17 @@ export interface ReservationSummary {
   reserved_at: string;
   updated_at: string;
   cancelled_at: string | null;
-  notes?: string;
+}
+
+export interface Payment {
+  id: number;
+  reservation: number;
+  amount: string;
+  payment_date: string;
+  payment_method: string;
+  notes: string;
+  processed_by: string | null;
+  created_at: string;
 }
 
 export interface MonitorRecentReservation {
@@ -65,6 +87,7 @@ export interface RaffleSettings {
   default_tickets_per_column: number;
   tickets_exist: boolean;
   ticket_count: number;
+  ticket_price: number;
   updated_at: string;
 }
 

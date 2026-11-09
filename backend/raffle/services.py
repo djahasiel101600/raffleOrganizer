@@ -16,6 +16,7 @@ rules are enforced in one place. In particular:
   "already reserved" error. It is never double-reserved.
 """
 
+from decimal import Decimal
 import logging
 import time
 
@@ -24,8 +25,13 @@ from channels.layers import get_channel_layer
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from .constants import ReservationStatus, TicketStatus
-from .models import RaffleSettings, Reservation, ReservationTicket, Ticket
+from .constants import (
+    PaymentStatus,
+    ReservationSource,
+    ReservationStatus,
+    TicketStatus,
+)
+from .models import Payment, RaffleSettings, Reservation, ReservationTicket, Ticket
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +88,8 @@ def _created_event(reservation: Reservation) -> dict:
         "ticket_numbers": [str(n).zfill(padding) for n in numbers],
         "reserved_count": len(numbers),
         "reserved_at": reservation.created_at.isoformat(),
+        "source": reservation.source,
+        "total_amount": str(reservation.total_amount),
     }
 
 
@@ -213,9 +221,17 @@ def _create_reservation_once(
     contact_number: str,
     notes: str,
     ticket_numbers: list[int],
+    source: str = ReservationSource.AUTHENTICATED,
+    price_per_ticket: str | int | float | None = None,
 ) -> Reservation:
     """One attempt at creating a reservation inside a single transaction."""
     numbers = _validate_ticket_numbers(ticket_numbers)
+
+    settings = RaffleSettings.get_singleton()
+    if price_per_ticket is None:
+        price_per_ticket = settings.ticket_price
+    price_per_ticket = Decimal(str(price_per_ticket))
+    total_amount = price_per_ticket * len(numbers)
 
     with transaction.atomic():
         # Sentinel write: acquire the platform's write lock up front. On
@@ -252,6 +268,11 @@ def _create_reservation_once(
             contact_number=contact_number,
             notes=notes,
             status=ReservationStatus.ACTIVE,
+            source=source,
+            price_per_ticket=price_per_ticket,
+            total_amount=total_amount,
+            amount_paid=Decimal("0"),
+            payment_status=PaymentStatus.UNPAID,
         )
 
         ReservationTicket.objects.bulk_create(
@@ -270,7 +291,14 @@ def _create_reservation_once(
         count = len(tickets)
 
     reservation = Reservation.objects.get(pk=reservation_id)
-    logger.info("Reservation #%s: %d ticket(s) for %s", reservation_id, count, customer)
+    logger.info(
+        "Reservation #%s: %d ticket(s) for %s (source=%s, total=%s)",
+        reservation_id,
+        count,
+        customer,
+        source,
+        total_amount,
+    )
     return reservation
 
 
@@ -279,6 +307,8 @@ def create_reservation(
     contact_number: str = "",
     ticket_numbers: list[int] | None = None,
     notes: str = "",
+    source: str = ReservationSource.AUTHENTICATED,
+    price_per_ticket: str | int | float | None = None,
 ) -> Reservation:
     """Create a reservation atomically and broadcast a live event.
 
@@ -301,7 +331,12 @@ def create_reservation(
     for attempt in range(1, MAX_TRANSACTION_ATTEMPTS + 1):
         try:
             return _create_reservation_once(
-                customer_name, contact_number, notes, numbers
+                customer_name,
+                contact_number,
+                notes,
+                numbers,
+                source=source,
+                price_per_ticket=price_per_ticket,
             )
         except DatabaseError as exc:  # pragma: no cover - SQLite writer contention
             last_error = exc
@@ -355,6 +390,83 @@ def cancel_reservation(reservation: Reservation) -> Reservation:
 
     locked.refresh_from_db()
     return locked
+
+
+# ---------------------------------------------------------------------------
+# Payment recording
+# ---------------------------------------------------------------------------
+
+
+def record_payment(
+    reservation: Reservation,
+    amount: str | int | float | Decimal,
+    payment_method: str = "",
+    reference_number: str = "",
+    paid_at=None,
+    notes: str = "",
+    processed_by=None,
+) -> tuple[Reservation, Payment]:
+    """Record a payment toward a reservation.
+
+    Updates amount_paid, recomputes payment_status, sets payment_date when
+    the reservation becomes fully paid, and records the processing
+    administrator.  Creates a Payment transaction record for audit history.
+
+    Returns (reservation, payment).
+    """
+    amount = Decimal(str(amount))
+    if amount <= 0:
+        raise ReservationError(
+            "Payment amount must be greater than zero.",
+            code="invalid_payment_amount",
+        )
+
+    if reservation.status != ReservationStatus.ACTIVE:
+        raise ReservationError(
+            "Cannot record payment for a cancelled reservation.",
+            code="reservation_not_active",
+        )
+
+    now = timezone.now()
+    payment_date = paid_at if paid_at else now
+    with transaction.atomic():
+        locked = Reservation.objects.select_for_update().get(pk=reservation.pk)
+        if locked.status != ReservationStatus.ACTIVE:
+            raise ReservationError(
+                "Cannot record payment for a cancelled reservation.",
+                code="reservation_not_active",
+            )
+
+        locked.amount_paid = (locked.amount_paid or Decimal("0")) + amount
+        locked.payment_status = locked.compute_payment_status()
+        if locked.payment_status == PaymentStatus.PAID:
+            locked.payment_date = now
+        locked.processed_by = processed_by
+        if notes:
+            locked.payment_notes = notes
+        locked.save(
+            update_fields=[
+                "amount_paid",
+                "payment_status",
+                "payment_date",
+                "processed_by",
+                "payment_notes",
+                "updated_at",
+            ]
+        )
+
+        payment = Payment.objects.create(
+            reservation=locked,
+            amount=amount,
+            payment_date=payment_date,
+            payment_method=payment_method.strip(),
+            reference_number=reference_number.strip(),
+            notes=notes.strip(),
+            processed_by=processed_by,
+        )
+
+    locked.refresh_from_db()
+    return locked, payment
 
 
 # ---------------------------------------------------------------------------

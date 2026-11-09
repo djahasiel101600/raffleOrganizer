@@ -144,6 +144,37 @@ WS   /ws/reservations/                    live reservation_created /
                                          reservation_cancelled events
 ```
 
+## Public Reservation (No Login Required)
+
+A public, login-free reservation flow has been added at `/reserve`:
+
+1. **Name entry** – visitor provides their full name (required) and contact.
+2. **Ticket selection** – grid + direct input with ranges (`1, 2, 10-15`).
+3. **Review & confirm** – visitor reviews before the reservation is created.
+4. **Confirmation** – shows reference number, name, tickets, total amount, and
+   payment status.
+
+Public reservations are stored with `source = "public"` and the visitor's name
+is persisted on the reservation. They appear in the admin reservations list.
+
+### Payment Tracking (Admin)
+
+Administrators can now track payments on every reservation:
+
+- **Payment status** – Unpaid, Partially Paid, Paid, Cancelled
+- **Payment fields** – amount paid, balance due, payment date, notes, processed by
+- **Payment history** – list of individual payment transactions per reservation
+- **Filters** – filter reservations by payment status and source (public/auth)
+- **Price per ticket** – configurable in Settings (`ticket_price`)
+
+### API Endpoints
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `POST /api/reservations/` | **Public allowed** | Create reservation (public or authenticated) |
+| `POST /api/reservations/{id}/payment/` | Auth required | Record a payment |
+| `GET /api/reservations/{id}/payments/` | Auth required | List payments for a reservation |
+
 ## Tests
 
 ```bash

@@ -1,6 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -15,6 +15,12 @@ import PrintCenter from "@/pages/PrintCenter";
 import PrintPreview from "@/pages/PrintPreview";
 import TicketDesigner from "@/pages/TicketDesigner";
 import Settings from "@/pages/Settings";
+import PublicReservation from "@/pages/PublicReservation";
+
+// A public (login-free) wrapper for the public reservation page.
+function PublicReservationRoute() {
+  return <PublicReservation />;
+}
 
 export default function App() {
   return (
@@ -22,6 +28,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reserve" element={<PublicReservationRoute />} />
           <Route
             element={
               <ProtectedRoute>

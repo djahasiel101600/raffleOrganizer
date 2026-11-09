@@ -46,6 +46,7 @@ export default function Settings() {
     end: 1000,
     padding: 4,
     tickets_per_column: 3,
+    ticket_price: 0,
   });
   const [saving, setSaving] = useState(false);
   const [confirmInit, setConfirmInit] = useState(false);
@@ -61,13 +62,14 @@ export default function Settings() {
         end: data.ending_ticket_number,
         padding: data.ticket_number_padding,
         tickets_per_column: data.default_tickets_per_column,
+        ticket_price: data.ticket_price,
       });
       setError(null);
     } catch (err) {
       setError(
         err instanceof ApiClientError
-          ? err.detail ?? "Unable to load settings."
-          : "Unable to connect to the server."
+          ? (err.detail ?? "Unable to load settings.")
+          : "Unable to connect to the server.",
       );
     }
   }, []);
@@ -90,6 +92,7 @@ export default function Settings() {
     try {
       await updateSettings({
         raffle_name: form.raffle_name.trim() || "Annual Community Raffle",
+        ticket_price: form.ticket_price,
         ticket_number_padding: form.padding,
         default_tickets_per_column: form.tickets_per_column,
       });
@@ -98,8 +101,8 @@ export default function Settings() {
     } catch (err) {
       toast.error(
         err instanceof ApiClientError
-          ? err.detail ?? "Unable to save settings."
-          : "Unable to connect to the server."
+          ? (err.detail ?? "Unable to save settings.")
+          : "Unable to connect to the server.",
       );
     } finally {
       setSaving(false);
@@ -117,14 +120,14 @@ export default function Settings() {
       });
       setConfirmInit(false);
       toast.success(
-        `Ticket range ${form.start} – ${form.end} created (${form.end - form.start + 1} tickets).`
+        `Ticket range ${form.start} – ${form.end} created (${form.end - form.start + 1} tickets).`,
       );
       await load();
     } catch (err) {
       toast.error(
         err instanceof ApiClientError
-          ? err.detail ?? "Unable to initialize tickets."
-          : "Unable to connect to the server."
+          ? (err.detail ?? "Unable to initialize tickets.")
+          : "Unable to connect to the server.",
       );
     } finally {
       setSaving(false);
@@ -181,7 +184,9 @@ export default function Settings() {
             <Input
               id="raffle_name"
               value={form.raffle_name}
-              onChange={(e) => setForm({ ...form, raffle_name: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, raffle_name: e.target.value })
+              }
             />
           </div>
 
@@ -219,15 +224,39 @@ export default function Settings() {
                 max={12}
                 value={form.padding}
                 onChange={(e) =>
-                  setForm({ ...form, padding: parseInt(e.target.value, 10) || 0 })
+                  setForm({
+                    ...form,
+                    padding: parseInt(e.target.value, 10) || 0,
+                  })
                 }
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="price">Ticket Price</Label>
+              <Input
+                id="price"
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.ticket_price}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    ticket_price: parseFloat(e.target.value) || 0,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Price per ticket in the local currency.
+              </p>
+            </div>
           </div>
+
           <p className="text-xs text-muted-foreground">
             Padding example: 25 with padding 4 displays as 0025.
           </p>
-<div className="space-y-2">
+
+          <div className="space-y-2">
             <Label htmlFor="per_column">Default Tickets Per Column</Label>
             <Select
               value={String(form.tickets_per_column)}
@@ -286,8 +315,8 @@ export default function Settings() {
                   <strong>
                     {form.start} – {form.end}
                   </strong>{" "}
-                  will delete the current {settings.ticket_count} tickets and all
-                  existing reservations. This cannot be undone.
+                  will delete the current {settings.ticket_count} tickets and
+                  all existing reservations. This cannot be undone.
                 </>
               ) : (
                 <>

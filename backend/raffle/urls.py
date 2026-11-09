@@ -20,6 +20,16 @@ urlpatterns = [
         views.ReservationCancelView.as_view(),
         name="reservation-cancel",
     ),
+    path(
+        "reservations/<int:pk>/payments/",
+        views.ReservationPaymentListView.as_view(),
+        name="reservation-payment-list",
+    ),
+    path(
+        "reservations/<int:pk>/payment/",
+        views.ReservationPaymentView.as_view(),
+        name="reservation-payment",
+    ),
     path("monitor/", views.MonitorView.as_view(), name="monitor"),
     path("settings/", views.SettingsView.as_view(), name="settings"),
     path(

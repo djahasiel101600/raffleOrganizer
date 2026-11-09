@@ -4,10 +4,17 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .constants import ReservationStatus, TicketStatus
-from .models import RaffleSettings, Reservation, Ticket, TicketDesign
+from .constants import (
+    PaymentStatus,
+    ReservationSource,
+    ReservationStatus,
+    TicketStatus,
+)
+from .models import Payment, RaffleSettings, Reservation, Ticket, TicketDesign
 from .serializers import (
     MonitorRecentSerializer,
+    PaymentRecordSerializer,
+    PaymentSerializer,
     RaffleSettingsSerializer,
     ReservationCreateSerializer,
     ReservationListSerializer,
@@ -18,8 +25,10 @@ from .serializers import (
 from .services import (
     ReservationError,
     cancel_reservation,
+    create_reservation,
     initialize_tickets,
     monitor_stats,
+    record_payment,
 )
 
 
@@ -113,7 +122,7 @@ class DashboardView(APIView):
 
 class TicketListView(generics.ListAPIView):
     serializer_class = TicketSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
         queryset = Ticket.objects.all()
@@ -133,6 +142,17 @@ class TicketListView(generics.ListAPIView):
         self.paginator.page_size = page_size
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        # Include the configured ticket price so public clients can compute
+        # totals without needing an authenticated settings call.
+        try:
+            settings = RaffleSettings.get_singleton()
+            response.data["ticket_price"] = str(settings.ticket_price)
+        except Exception:  # pragma: no cover - settings always exists
+            response.data["ticket_price"] = "0.00"
+        return response
+
 
 # ---------------------------------------------------------------------------
 # Reservations
@@ -140,7 +160,16 @@ class TicketListView(generics.ListAPIView):
 
 
 class ReservationListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    """List reservations (authenticated) or create a reservation (public or authenticated).
+
+    POST is open to unauthenticated visitors for public ticket reservations.
+    GET requires authentication.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -152,6 +181,21 @@ class ReservationListCreateView(generics.ListCreateAPIView):
         status_filter = self.request.query_params.get("status")
         if status_filter in (ReservationStatus.ACTIVE, ReservationStatus.CANCELLED):
             queryset = queryset.filter(status=status_filter)
+
+        # Filter by payment status when provided.
+        payment_filter = self.request.query_params.get("payment_status")
+        if payment_filter in (
+            PaymentStatus.UNPAID,
+            PaymentStatus.PARTIALLY_PAID,
+            PaymentStatus.PAID,
+            PaymentStatus.CANCELLED,
+        ):
+            queryset = queryset.filter(payment_status=payment_filter)
+
+        # Filter by reservation source (public vs authenticated).
+        source_filter = self.request.query_params.get("source")
+        if source_filter in (ReservationSource.PUBLIC, ReservationSource.AUTHENTICATED):
+            queryset = queryset.filter(source=source_filter)
 
         search = self.request.query_params.get("search", "").strip()
         if search:
@@ -183,7 +227,33 @@ class ReservationListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reservation = serializer.save()
+
+        # Determine source: public visitors are always 'public';
+        # authenticated staff may be 'authenticated' (or explicitly 'public').
+        validated = serializer.validated_data
+        source = validated.get("source", ReservationSource.AUTHENTICATED)
+        if not request.user or not request.user.is_authenticated:
+            source = ReservationSource.PUBLIC
+
+        price_per_ticket = validated.get("price_per_ticket")
+        if price_per_ticket is None:
+            price_per_ticket = RaffleSettings.get_singleton().ticket_price
+
+        try:
+            reservation = create_reservation(
+                customer_name=validated["customer_name"],
+                contact_number=validated.get("contact_number", ""),
+                ticket_numbers=validated["ticket_numbers"],
+                notes=validated.get("notes", ""),
+                source=source,
+                price_per_ticket=price_per_ticket,
+            )
+        except ReservationError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         _hydrate_numbers([reservation])
         return Response(
             ReservationSerializer(reservation).data,
@@ -217,6 +287,41 @@ class ReservationCancelView(APIView):
             )
         _hydrate_numbers([cancelled])
         return Response(ReservationSerializer(cancelled).data)
+
+
+# ---------------------------------------------------------------------------
+# Payment management (admin only)
+# ---------------------------------------------------------------------------
+
+
+class ReservationPaymentListView(generics.ListAPIView):
+    """List all payments for a given reservation (admin only)."""
+
+    serializer_class = PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        reservation = get_object_or_404(Reservation, pk=self.kwargs["pk"])
+        return Payment.objects.filter(reservation=reservation)
+
+
+class ReservationPaymentView(APIView):
+    """Record a payment toward a reservation (admin only)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        reservation = get_object_or_404(Reservation, pk=pk)
+        serializer = PaymentRecordSerializer(
+            data=request.data,
+            context={"reservation": reservation, "request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
+        return Response(
+            PaymentSerializer(payment).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 # ---------------------------------------------------------------------------

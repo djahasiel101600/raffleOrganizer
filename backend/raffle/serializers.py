@@ -1,8 +1,14 @@
+from decimal import Decimal
 from rest_framework import serializers
 
-from .constants import ReservationStatus, TicketStatus
-from .models import RaffleSettings, Reservation, Ticket, TicketDesign
-from .services import ReservationError, create_reservation
+from .constants import (
+    PaymentStatus,
+    ReservationSource,
+    ReservationStatus,
+    TicketStatus,
+)
+from .models import Payment, RaffleSettings, Reservation, Ticket, TicketDesign
+from .services import ReservationError, create_reservation, record_payment
 from .ticket_geometry import (
     ORIENTATIONS,
     GeometryError,
@@ -34,6 +40,7 @@ class RaffleSettingsSerializer(serializers.ModelSerializer):
             "ending_ticket_number",
             "ticket_number_padding",
             "default_tickets_per_column",
+            "ticket_price",
             "tickets_exist",
             "ticket_count",
             "updated_at",
@@ -71,6 +78,17 @@ class ReservationCreateSerializer(serializers.Serializer):
         required=False, allow_blank=True, allow_null=True, default=""
     )
     ticket_numbers = ReservationTicketNumberField(write_only=True)
+    source = serializers.ChoiceField(
+        choices=ReservationSource.choices,
+        required=False,
+        default=ReservationSource.AUTHENTICATED,
+    )
+    price_per_ticket = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
 
     def create(self, validated_data):
         try:
@@ -88,6 +106,15 @@ class ReservationSerializer(serializers.ModelSerializer):
     ticket_count = serializers.SerializerMethodField()
     reserved_at = serializers.SerializerMethodField()
     cancelled_at = serializers.DateTimeField()
+    source = serializers.CharField(read_only=True)
+    price_per_ticket = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_status = serializers.CharField(read_only=True)
+    balance_due = serializers.SerializerMethodField()
+    payment_date = serializers.DateTimeField(read_only=True)
+    payment_notes = serializers.CharField(read_only=True)
+    processed_by = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Reservation
@@ -98,6 +125,15 @@ class ReservationSerializer(serializers.ModelSerializer):
             "contact_number",
             "notes",
             "status",
+            "source",
+            "price_per_ticket",
+            "total_amount",
+            "amount_paid",
+            "balance_due",
+            "payment_status",
+            "payment_date",
+            "payment_notes",
+            "processed_by",
             "ticket_numbers",
             "printable_ticket_numbers",
             "ticket_count",
@@ -144,6 +180,15 @@ class ReservationSerializer(serializers.ModelSerializer):
 
     def get_reserved_at(self, obj):
         return obj.created_at
+
+    def get_processed_by(self, obj):
+        if obj.processed_by:
+            return obj.processed_by.username
+        return None
+
+    def get_balance_due(self, obj):
+        """Outstanding balance: total_amount minus amount_paid."""
+        return obj.total_amount - obj.amount_paid
 
 
 class TicketDesignSerializer(serializers.ModelSerializer):
@@ -325,6 +370,11 @@ class ReservationListSerializer(ReservationSerializer):
             "customer_name",
             "contact_number",
             "status",
+            "source",
+            "total_amount",
+            "amount_paid",
+            "balance_due",
+            "payment_status",
             "ticket_numbers",
             "ticket_count",
             "created_at",
@@ -374,3 +424,62 @@ class MonitorRecentSerializer(serializers.ModelSerializer):
 
     def get_reserved_at(self, obj):
         return obj.created_at
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    processed_by = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "reservation",
+            "amount",
+            "payment_date",
+            "payment_method",
+            "reference_number",
+            "notes",
+            "processed_by",
+            "created_at",
+        ]
+        read_only_fields = ["id", "payment_date", "created_at", "processed_by"]
+
+    def get_processed_by(self, obj):
+        if obj.processed_by:
+            return obj.processed_by.username
+        return None
+
+
+class PaymentRecordSerializer(serializers.Serializer):
+    """Serializer for recording a payment toward a reservation (admin only)."""
+
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    payment_method = serializers.CharField(
+        required=False, allow_blank=True, max_length=50, default=""
+    )
+    reference_number = serializers.CharField(
+        required=False, allow_blank=True, max_length=64, default=""
+    )
+    paid_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    notes = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default=""
+    )
+
+    def create(self, validated_data):
+        reservation = self.context["reservation"]
+        processed_by = self.context["request"].user
+        try:
+            _, payment = record_payment(
+                reservation=reservation,
+                amount=validated_data["amount"],
+                payment_method=validated_data.get("payment_method", ""),
+                reference_number=validated_data.get("reference_number", ""),
+                paid_at=validated_data.get("paid_at"),
+                notes=validated_data.get("notes", ""),
+                processed_by=processed_by if processed_by.is_authenticated else None,
+            )
+        except ReservationError as exc:
+            raise serializers.ValidationError(
+                {"detail": exc.message, "code": exc.code}
+            ) from exc
+        return payment

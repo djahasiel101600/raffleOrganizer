@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { fetchTickets } from "@/services/tickets";
 import { createReservation } from "@/services/reservations";
 import { useReservationSocket } from "@/services/websocket";
+import { apiFetch } from "@/services/api";
 import { TicketGrid } from "@/components/TicketGrid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,18 @@ import { Textarea } from "@/components/ui/text-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiClientError } from "@/services/api";
 import type { Ticket } from "@/types";
+
+/** Safe peso formatting: never renders "₱NaN" for missing/invalid values. */
+function formatPeso(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  return (
+    "₱" +
+    (Number.isFinite(n) ? n : 0).toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+}
 
 /** Parse "1, 2, 3, 10-15" style input into a sorted unique number list. */
 export function parseTicketInput(input: string): number[] {
@@ -48,6 +61,7 @@ export default function NewReservation() {
   const [customerName, setCustomerName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [ticketPrice, setTicketPrice] = useState<number | null>(null);
   const [ticketSearch, setTicketSearch] = useState("");
   const [directInput, setDirectInput] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -85,6 +99,27 @@ export default function NewReservation() {
   useEffect(() => {
     void loadTickets("", 1, true);
   }, [loadTickets]);
+
+  // Load the configured ticket price so it is sent when creating a reservation.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await apiFetch<{ ticket_price: string }>(
+          "/api/settings/"
+        );
+        if (!cancelled && settings.ticket_price != null) {
+          setTicketPrice(Number(settings.ticket_price));
+        }
+      } catch {
+        // Settings may not be available; price_per_ticket will fall back to
+        // the server default.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     // Keep the grid fresh when tickets are reserved elsewhere.
@@ -162,6 +197,7 @@ export default function NewReservation() {
         contact_number: contactNumber.trim(),
         notes: notes.trim(),
         ticket_numbers: selectedNumbers,
+        price_per_ticket: ticketPrice ?? undefined,
       });
       toast.success(
         `Reservation successful. ${reservation.ticket_count} tickets reserved for ${reservation.customer_name}.`,
@@ -358,6 +394,18 @@ export default function NewReservation() {
                   {selectionList.length === 1 ? "" : "s"}
                 </span>
               </div>
+              {ticketPrice != null && selectionList.length > 0 && (
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Price per ticket</span>
+                  <span className="font-medium">{formatPeso(ticketPrice)}</span>
+                </div>
+              )}
+              {ticketPrice != null && selectionList.length > 0 && (
+                <div className="mb-2 flex items-center justify-between text-sm font-semibold">
+                  <span className="text-muted-foreground">Estimated total</span>
+                  <span>{formatPeso(ticketPrice * selectionList.length)}</span>
+                </div>
+              )}
               {selectionList.length === 0 ? (
                 <p className="py-3 text-center text-sm text-muted-foreground">
                   No tickets selected yet.
