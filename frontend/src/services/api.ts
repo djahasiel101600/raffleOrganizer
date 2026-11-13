@@ -79,7 +79,10 @@ async function parseErrorResponse(response: Response): Promise<ApiClientError> {
   );
 }
 
-async function rawFetch(path: string, options: RequestOptions): Promise<Response> {
+async function rawFetch(
+  path: string,
+  options: RequestOptions,
+): Promise<Response> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body instanceof FormData) {
     // Let the browser set the multipart boundary header.
@@ -121,11 +124,18 @@ async function refreshAccessToken(): Promise<boolean> {
   return true;
 }
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   let response = await rawFetch(path, options);
 
   // Transparently refresh an expired access token once.
-  if (response.status === 401 && options.auth !== false && options.retry !== false) {
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.retry !== false
+  ) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       response = await rawFetch(path, options);

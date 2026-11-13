@@ -91,7 +91,7 @@ export const TOKENS: TokenSpec[] = [
 
 /** Sample values used on the designer canvas. */
 export const SAMPLE_CONTEXT: TicketPrintContext = Object.fromEntries(
-  TOKENS.map((spec) => [spec.token.slice(1, -1), spec.sample])
+  TOKENS.map((spec) => [spec.token.slice(1, -1), spec.sample]),
 ) as unknown as TicketPrintContext;
 
 export const FONT_FAMILIES = [
@@ -124,14 +124,62 @@ export const FONT_FAMILIES = [
   { label: "Cookie", value: "Cookie, cursive" },
   { label: "Caveat", value: "Caveat, cursive" },
   { label: "Kalam", value: "Kalam, cursive" },
+
+  // Elegant Script
+  { label: "Parisienne", value: "Parisienne, cursive" },
+  { label: "Pinyon Script", value: "'Pinyon Script', cursive" },
+  { label: "Tangerine", value: "Tangerine, cursive" },
+  { label: "Rochester", value: "Rochester, cursive" },
+  { label: "Marck Script", value: "'Marck Script', cursive" },
+  { label: "Mrs Saint Delafield", value: "'Mrs Saint Delafield', cursive" },
+  { label: "Petit Formal Script", value: "'Petit Formal Script', cursive" },
+  { label: "Italianno", value: "Italianno, cursive" },
+  { label: "Monsieur La Doulaise", value: "'Monsieur La Doulaise', cursive" },
+  { label: "Rouge Script", value: "'Rouge Script', cursive" },
+
+  // Modern / Decorative Script
+  { label: "Yellowtail", value: "Yellowtail, cursive" },
+  { label: "Kaushan Script", value: "'Kaushan Script', cursive" },
+  { label: "Berkshire Swash", value: "'Berkshire Swash', cursive" },
+  { label: "Mr Dafoe", value: "'Mr Dafoe', cursive" },
+  { label: "Damion", value: "Damion, cursive" },
+  { label: "Oleo Script", value: "'Oleo Script', cursive" },
+  { label: "Merienda", value: "Merienda, cursive" },
+  { label: "Clicker Script", value: "'Clicker Script', cursive" },
+  { label: "Rouge Script", value: "'Rouge Script', cursive" },
+
+  // Casual Handwriting
+  { label: "Patrick Hand", value: "'Patrick Hand', cursive" },
+  { label: "Indie Flower", value: "'Indie Flower', cursive" },
+  { label: "Shadows Into Light", value: "'Shadows Into Light', cursive" },
+  { label: "Handlee", value: "Handlee, cursive" },
+  { label: "Architects Daughter", value: "'Architects Daughter', cursive" },
+  { label: "Gochi Hand", value: "'Gochi Hand', cursive" },
+  { label: "Gloria Hallelujah", value: "'Gloria Hallelujah', cursive" },
+  { label: "Cedarville Cursive", value: "'Cedarville Cursive', cursive" },
+  { label: "Coming Soon", value: "'Coming Soon', cursive" },
+  { label: "Homemade Apple", value: "'Homemade Apple', cursive" },
+
+  // Bold / Playful Handwriting
+  { label: "Permanent Marker", value: "'Permanent Marker', cursive" },
+  { label: "Rock Salt", value: "'Rock Salt', cursive" },
+  { label: "Chewy", value: "Chewy, cursive" },
+  { label: "Knewave", value: "Knewave, cursive" },
+  { label: "Bangers", value: "Bangers, cursive" },
+  { label: "Finger Paint", value: "'Finger Paint', cursive" },
 ];
 
 export const DEFAULT_FONT_FAMILY = FONT_FAMILIES[0].value;
 
 /** Replace `{token}` placeholders; unknown tokens are left as-is. */
-export function resolveTokens(text: string, context: TicketPrintContext): string {
+export function resolveTokens(
+  text: string,
+  context: TicketPrintContext,
+): string {
   return text.replace(/\{(\w+)\}/g, (match, key: string) => {
-    const value = (context as unknown as Record<string, string | undefined>)[key];
+    const value = (context as unknown as Record<string, string | undefined>)[
+      key
+    ];
     return value === undefined ? match : value;
   });
 }
@@ -143,7 +191,7 @@ export function clamp(value: number, min: number, max: number): number {
 /** Compute the inline style that renders an element inside a ticket cell. */
 export function elementStyle(
   element: DesignElement,
-  cellHeightPx: number
+  cellHeightPx: number,
 ): CSSProperties {
   const rotation = element.rotation || 0;
   const common: CSSProperties = {
@@ -222,14 +270,16 @@ function baseElement(patch: Partial<DesignElement> = {}): DesignElement {
   };
 }
 
-export function createElement(patch: Partial<DesignElement> = {}): DesignElement {
+export function createElement(
+  patch: Partial<DesignElement> = {},
+): DesignElement {
   return baseElement({ type: "text", ...patch });
 }
 
 /** A shape (colored rectangle / ellipse) added to the design. */
 export function createShapeElement(
   shape: ShapeKind,
-  patch: Partial<DesignElement> = {}
+  patch: Partial<DesignElement> = {},
 ): DesignElement {
   return baseElement({ type: "shape", text: "", shape, ...patch });
 }
@@ -288,7 +338,7 @@ export function normalizeLayout(raw: unknown): DesignElement[] {
   return raw
     .filter(
       (item): item is Record<string, unknown> =>
-        typeof item === "object" && item !== null
+        typeof item === "object" && item !== null,
     )
     .map((item, index) => {
       const shared = {
@@ -324,7 +374,9 @@ export function normalizeLayout(raw: unknown): DesignElement[] {
         underline: Boolean(item.underline),
         uppercase: Boolean(item.uppercase),
         align:
-          item.align === "left" || item.align === "right" || item.align === "center"
+          item.align === "left" ||
+          item.align === "right" ||
+          item.align === "center"
             ? item.align
             : "center",
         fontFamily:
@@ -357,7 +409,7 @@ export type AlignMode =
  */
 export function alignElements(
   elements: DesignElement[],
-  mode: AlignMode
+  mode: AlignMode,
 ): { id: string; x?: number; y?: number }[] {
   if (elements.length < 2) return [];
   const xs = elements.map((element) => element.x);

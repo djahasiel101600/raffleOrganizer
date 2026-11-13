@@ -1,3 +1,4 @@
+// /services/ticketDesign
 import { apiFetch } from "./api";
 import type { DesignElement, TicketDesignPayload } from "@/lib/ticketDesign";
 
@@ -24,7 +25,7 @@ export interface SaveDesignInput {
  * image can be uploaded in the same request as the layout JSON.
  */
 export async function saveTicketDesign(
-  input: SaveDesignInput
+  input: SaveDesignInput,
 ): Promise<TicketDesignPayload> {
   const form = new FormData();
   form.append("layout", JSON.stringify(input.layout));
