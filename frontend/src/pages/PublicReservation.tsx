@@ -441,7 +441,6 @@ export default function PublicReservation() {
   const isOther = beneficiaryType === "other";
   const responsibleName = isOther ? personReserving.trim() : customerName.trim();
   const ownerName = isOther ? ticketOwnerName.trim() : responsibleName;
-  const ownerLine = isOther && ownerName ? "Ticket owner: " + ownerName : "";
   // Keep room in the notes limit for the "Ticket owner" line sent to the server.
   const responsibleLine = isOther && responsibleName ? "Reserved by: " + responsibleName : "";
   const notesLimit = Math.max(
