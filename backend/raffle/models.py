@@ -100,6 +100,7 @@ class Reservation(models.Model):
     """A customer reservation covering one or more tickets."""
 
     customer_name = models.CharField(max_length=200)
+    person_reserving = models.CharField(max_length=200, default="", blank=True)
     contact_number = models.CharField(max_length=50, blank=True, default="")
     notes = models.TextField(blank=True, default="")
     status = models.CharField(

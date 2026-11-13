@@ -120,84 +120,6 @@ interface TicketsResponse {
   ticket_price?: number | string | null;
 }
 
-// ############### DELETE THIS PART #############################
-// Public API helpers - anonymous endpoints that skip JWT token attachment
-// const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
-
-// class ApiClientError extends Error {
-//   status: number;
-//   detail: string;
-//   code?: string;
-//   response?: Response;
-
-//   constructor(
-//     status: number,
-//     detail: string,
-//     code?: string,
-//     response?: Response,
-//   ) {
-//     super(detail);
-//     this.name = "ApiClientError";
-//     this.status = status;
-//     this.detail = detail;
-//     this.code = code;
-//     this.response = response;
-//   }
-// }
-
-// function isApiClientError(error: unknown): error is ApiClientError {
-//   return error instanceof ApiClientError;
-// }
-
-// interface PublicApiFetchOptions {
-//   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-//   body?: unknown;
-//   signal?: AbortSignal;
-// }
-
-// async function apiFetchPublic<T>(
-//   path: string,
-//   options: PublicApiFetchOptions = {},
-// ): Promise<T> {
-//   const headers: Record<string, string> = { Accept: "application/json" };
-//   if (options.body instanceof FormData) {
-//     // Let the browser set the multipart boundary header
-//   } else if (options.body !== undefined) {
-//     headers["Content-Type"] = "application/json";
-//   }
-
-//   const response = await fetch(API_BASE + path, {
-//     method: options.method ?? "GET",
-//     headers,
-//     signal: options.signal,
-//     body:
-//       options.body instanceof FormData
-//         ? options.body
-//         : options.body !== undefined
-//           ? JSON.stringify(options.body)
-//           : undefined,
-//   });
-
-//   if (!response.ok) {
-//     let payload: Record<string, unknown> = {};
-//     try {
-//       payload = await response.json();
-//     } catch {
-//       // Response had no JSON body; fall back to the generic message below.
-//     }
-//     const detail =
-//       typeof payload.detail === "string"
-//         ? payload.detail
-//         : "Request failed (" + response.status + ").";
-//     const code = typeof payload.code === "string" ? payload.code : undefined;
-//     throw new ApiClientError(response.status, detail, code, response);
-//   }
-
-//   if (response.status === 204) return undefined as T;
-//   return (await response.json()) as T;
-// }
-// ############### DELETE THIS PART #############################
-
 import { apiFetch, ApiClientError } from "@/services/api";
 
 function isApiClientError(error: unknown): error is ApiClientError {
@@ -413,6 +335,7 @@ export default function PublicReservation() {
     useState<BeneficiaryType | null>(null);
   // The responsible person: makes the reservation and is the payment contact.
   const [customerName, setCustomerName] = useState("");
+  const [personReserving, setPersonReserving] = useState("");
   // The person who will own the reserved ticket numbers (reserving for others).
   const [ticketOwnerName, setTicketOwnerName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
@@ -516,16 +439,17 @@ export default function PublicReservation() {
   // Who is who. The ticket owner is derived, so nothing is ever duplicated
   // when the visitor goes back and forth between steps.
   const isOther = beneficiaryType === "other";
-  const responsibleName = customerName.trim();
+  const responsibleName = isOther ? personReserving.trim() : customerName.trim();
   const ownerName = isOther ? ticketOwnerName.trim() : responsibleName;
   const ownerLine = isOther && ownerName ? "Ticket owner: " + ownerName : "";
   // Keep room in the notes limit for the "Ticket owner" line sent to the server.
+  const responsibleLine = isOther && responsibleName ? "Reserved by: " + responsibleName : "";
   const notesLimit = Math.max(
     0,
-    MAX_NOTES_LENGTH - (ownerLine ? ownerLine.length + 1 : 0),
+    MAX_NOTES_LENGTH - (responsibleLine ? responsibleLine.length + 1 : 0),
   );
   const buildNotes = () =>
-    [notes.trim().slice(0, notesLimit), ownerLine].filter(Boolean).join("\n");
+    [notes.trim().slice(0, notesLimit), responsibleLine].filter(Boolean).join("\n");
 
   const nameError = detailsAttempted && !responsibleName;
   const ownerError = detailsAttempted && isOther && !ownerName;
@@ -647,7 +571,7 @@ export default function PublicReservation() {
   const handleNameSubmit = () => {
     setDetailsAttempted(true);
     if (!responsibleName) {
-      focusField("customer_name");
+      focusField(isOther ? "person_reserving" : "customer_name");
       return;
     }
     if (isOther && !ownerName) {
@@ -678,7 +602,7 @@ export default function PublicReservation() {
       // the backend falls back to the configured `settings.ticket_price` instead
       // of storing a hard `0` price.
       const created = (await createReservation({
-        customer_name: responsibleName,
+      customer_name: ownerName, 
         contact_number: contactNumber.trim() || undefined,
         notes: buildNotes() || undefined,
         ticket_numbers: selectionList,
@@ -865,6 +789,27 @@ export default function PublicReservation() {
                       ? "Your full name (person reserving)"
                       : "Your full name"}
                   </Label>
+                  {isOther ? (
+                  <Input
+                    id="person_reserving"
+                    autoComplete="name"
+                    autoCapitalize="words"
+                    enterKeyHint="next"
+                    maxLength={MAX_NAME_LENGTH}
+                    value={personReserving}
+                    onChange={(e) => setPersonReserving(e.target.value)}
+                    required
+                    autoFocus
+                    aria-invalid={nameError}
+                    aria-describedby={
+                      nameError ? "person_reserving_error" : "person_reserving_hint"
+                    }
+                    placeholder="e.g. Juan Dela Cruz"
+                    className={
+                      "h-12 text-base " + (nameError ? "border-destructive" : "")
+                    }
+                  />
+                ) : (
                   <Input
                     id="customer_name"
                     autoComplete="name"
@@ -881,14 +826,18 @@ export default function PublicReservation() {
                     }
                     placeholder="e.g. Maria Clara"
                     className={
-                      "h-12 text-base " +
-                      (nameError ? "border-destructive" : "")
+                      "h-12 text-base " + (nameError ? "border-destructive" : "")
                     }
-                  />
+                    />
+                  )}
                   {nameError ? (
                     <FieldError
-                      id="customer_name_error"
-                      message="Please enter your full name."
+                      id={isOther ? "person_reserving_error" : "customer_name_error"}
+                      message={
+                        isOther
+                          ? "Please enter your full name."
+                          : "Please enter your full name."
+                      }
                     />
                   ) : (
                     <p
@@ -903,46 +852,45 @@ export default function PublicReservation() {
                 </div>
 
                 {isOther && (
-                  <div className="space-y-2">
-                    <Label htmlFor="ticket_owner_name">
-                      Ticket owner&apos;s full name
-                    </Label>
-                    <Input
-                      id="ticket_owner_name"
-                      autoComplete="off"
-                      autoCapitalize="words"
-                      enterKeyHint="next"
-                      maxLength={MAX_NAME_LENGTH}
-                      value={ticketOwnerName}
-                      onChange={(e) => setTicketOwnerName(e.target.value)}
-                      required
-                      aria-invalid={ownerError}
-                      aria-describedby={
-                        ownerError
-                          ? "ticket_owner_name_error"
-                          : "ticket_owner_name_hint"
-                      }
-                      placeholder="e.g. Juan Dela Cruz"
-                      className={
-                        "h-12 text-base " +
-                        (ownerError ? "border-destructive" : "")
-                      }
+                <div className="space-y-2">
+                  <Label htmlFor="ticket_owner_name">
+                    Ticket owner&apos;s full name
+                  </Label>
+                  <Input
+                    id="ticket_owner_name"
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    enterKeyHint="next"
+                    maxLength={MAX_NAME_LENGTH}
+                    value={ticketOwnerName}  // ← was customerName
+                    onChange={(e) => setTicketOwnerName(e.target.value)}  // ← was setCustomerName
+                    required
+                    aria-invalid={ownerError}
+                    aria-describedby={
+                      ownerError
+                        ? "ticket_owner_name_error"
+                        : "ticket_owner_name_hint"
+                    }
+                    placeholder="e.g. Juan Dela Cruz"
+                    className={
+                      "h-12 text-base " + (ownerError ? "border-destructive" : "")
+                    }
+                  />
+                  {ownerError ? (
+                    <FieldError
+                      id="ticket_owner_name_error"
+                      message="Please enter the ticket owner's full name."
                     />
-                    {ownerError ? (
-                      <FieldError
-                        id="ticket_owner_name_error"
-                        message="Please enter the ticket owner's full name."
-                      />
-                    ) : (
-                      <p
-                        id="ticket_owner_name_hint"
-                        className="text-xs text-muted-foreground"
-                      >
-                        The tickets will be registered under this person.
-                      </p>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <p
+                      id="ticket_owner_name_hint"
+                      className="text-xs text-muted-foreground"
+                    >
+                      The tickets will be registered under this person.
+                    </p>
+                  )}
+                </div>
+              )}
 
                 <div className="space-y-2">
                   <Label htmlFor="contact_number">
@@ -1626,6 +1574,8 @@ export default function PublicReservation() {
                   // usually the same person making several reservations.
                   setBeneficiaryType(null);
                   setTicketOwnerName("");
+                  setPersonReserving("");
+                  setContactNumber("");
                   setNotes("");
                   setDetailsAttempted(false);
                   setSelected(new Set());

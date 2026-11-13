@@ -16,6 +16,7 @@ export interface ReservationSummary {
   display_id: string;
   customer_name: string;
   contact_number: string;
+  person_reserving: string; // Name of the person reserving the tickets at Public Reservation Page
   notes?: string;
   status: ReservationStatus;
   source: ReservationSource;
@@ -26,7 +27,7 @@ export interface ReservationSummary {
   payment_status: PaymentStatus;
   payment_date: string | null;
   payment_notes: string;
-  processed_by: string | null;
+  processed_by: string | null; // User who processed the payment
   ticket_numbers: string[];
   /** Subset of `ticket_numbers` that is still active and therefore printable. */
   printable_ticket_numbers: string[];
