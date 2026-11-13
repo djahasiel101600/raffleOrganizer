@@ -708,11 +708,11 @@ export default function TicketDesigner() {
   );
 
   // ---- history (undo / redo) ---------------------------------------------------
-  const syncHistoryCounts = () =>
-    setHistoryCounts({
-      past: pastRef.current.length,
-      future: futureRef.current.length,
-    });
+  // const syncHistoryCounts = () =>
+  //   setHistoryCounts({
+  //     past: pastRef.current.length,
+  //     future: futureRef.current.length,
+  //   });
 
   /**
    * Record the current layout before a change.  Calls sharing a `key` within
