@@ -102,7 +102,68 @@
  * print surface is hidden, and the `@page` size for sheets is injected per
  * print job by `pageRuleCss()` so the sheet geometry is exact.
  * ------------------------------------------------------------------------- */
-@media print {
+ @media print {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+  #print-area,
+  #print-area *,
+  #print-root,
+  #print-root * {
+    visibility: visible;
+  }
+
+  /* Legacy single-customer preview: unchanged */
+  #print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+
+  /* Print Center */
+  #print-root {
+    position: static;
+    margin: 0;
+    padding: 0;
+  }
+  #print-root .print-sheet-scaler {
+    transform: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  #print-root .print-sheet-scaler:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  #print-root .print-sheet {
+    position: relative;
+    overflow: hidden;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+  .print-ticket {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* @media print {
   body * {
     visibility: hidden;
   }
@@ -116,10 +177,10 @@
     position: absolute;
     inset: 0;
     width: 100%;
-  }
+  } */
 
   /* Print Center: strip the on-screen-only chrome so sheets print exactly. */
-  #print-root {
+  /* #print-root {
     position: absolute;
     inset: 0;
     margin: 0;
@@ -150,4 +211,4 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
-}
+} */

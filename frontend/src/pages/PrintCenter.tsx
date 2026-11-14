@@ -300,7 +300,7 @@ export default function PrintCenter() {
     );
   }
 
-  const canPrint = printContexts.length > 0 && geometryError === null;
+  const canPrint = printContexts.length > 0 && geometryError === null && !allLoading;
 
   return (
     <div>

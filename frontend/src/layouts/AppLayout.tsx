@@ -34,8 +34,8 @@ export function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r bg-card md:flex">
+    <div className="min-h-screen bg-background print:min-h-0">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r bg-card md:flex print:hidden">
         <div className="flex h-14 items-center gap-2 border-b px-4">
           <Printer className="h-5 w-5 text-primary" />
           <div className="leading-tight">
@@ -72,15 +72,15 @@ export function AppLayout() {
       </aside>
 
       {/* Top bar for small screens */}
-      <header className="flex h-14 items-center justify-between border-b bg-card px-4 md:hidden">
+      <header className="flex h-14 items-center justify-between border-b bg-card px-4 md:hidden print:hidden">
         <span className="text-sm font-bold">Raffle Reservation</span>
         <Button variant="ghost" size="sm" onClick={handleLogout}>
           <LogOut className="h-4 w-4" />
         </Button>
       </header>
 
-      <div className="md:pl-60">
-        <main className="mx-auto max-w-6xl p-4 md:p-6">
+      <div className="md:pl-60 print:pl-0">
+        <main className="mx-auto max-w-6xl p-4 md:p-6 print:max-w-none print:p-0">
           <Outlet />
         </main>
       </div>

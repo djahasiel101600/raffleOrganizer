@@ -12,7 +12,10 @@
 export type PaperSizeName = "A4" | "Letter" | "Legal";
 export type Orientation = "portrait" | "landscape";
 
-export const PAPER_SIZES_MM: Record<PaperSizeName, { width: number; height: number }> = {
+export const PAPER_SIZES_MM: Record<
+  PaperSizeName,
+  { width: number; height: number }
+> = {
   A4: { width: 210, height: 297 },
   Letter: { width: 215.9, height: 279.4 },
   Legal: { width: 215.9, height: 355.6 },
@@ -95,9 +98,13 @@ export interface TicketCellSize {
 export function ticketCellSizeMm(geometry: PrintGeometry): TicketCellSize {
   const sheet = sheetSizeMm(geometry);
   const availableWidth =
-    sheet.widthMm - 2 * geometry.marginMm - (geometry.columns - 1) * geometry.gapMm;
+    sheet.widthMm -
+    2 * geometry.marginMm -
+    (geometry.columns - 1) * geometry.gapMm;
   const availableHeight =
-    sheet.heightMm - 2 * geometry.marginMm - (geometry.rows - 1) * geometry.gapMm;
+    sheet.heightMm -
+    2 * geometry.marginMm -
+    (geometry.rows - 1) * geometry.gapMm;
   const widthMm = availableWidth / geometry.columns;
   const heightMm = availableHeight / geometry.rows;
   return {
@@ -143,7 +150,7 @@ export function validateGeometry(geometry: PrintGeometry): string | null {
 /** Top-left origin (mm) of cell `index`, filling row-major (left→right, top→bottom). */
 export function cellOriginMm(
   geometry: PrintGeometry,
-  index: number
+  index: number,
 ): { xMm: number; yMm: number } {
   const cell = ticketCellSizeMm(geometry);
   const column = index % geometry.columns;
@@ -214,8 +221,15 @@ export function ticketSizeGuide(geometry: PrintGeometry): TicketSizeGuide {
 
 /** The @page rule for the current sheet setup (injected per print job). */
 export function pageRuleCss(geometry: PrintGeometry): string {
-  const sheet = sheetSizeMm(geometry);
-  return `@page { size: ${sheet.widthMm}mm ${sheet.heightMm}mm; margin: 0; }`;
+  const { widthMm, heightMm } = sheetSizeMm(geometry);
+  const printHeight = heightMm - 0.5;
+  return `
+@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
+@media print {
+  #print-root .print-sheet-scaler,
+  #print-root .print-sheet { height: ${printHeight}mm !important; }
+  #print-root .print-sheet-scaler { overflow: hidden; }
+}`;
 }
 
 export function formatMm(value: number): string {
